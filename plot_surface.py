@@ -58,8 +58,9 @@ def setup_surface_file(args, surf_file, dir_file):
     f = h5py.File(surf_file, 'a')
     f['dir_file'] = dir_file
 
+    print(args.xmin, args.xmax, args.xnum)
     # Create the coordinates(resolutions) at which the function is evaluated
-    xcoordinates = np.linspace(args.xmin, args.xmax, num=args.xnum)
+    xcoordinates = np.linspace(args.xmin, args.xmax, num=int(args.xnum))
     f['xcoordinates'] = xcoordinates
 
     if args.y:
@@ -118,7 +119,7 @@ def crunch(surf_file, net, w, s, d, dataloader, loss_key, acc_key, comm, rank, a
 
         # Record the time to compute the loss value
         loss_start = time.time()
-        loss, acc = evaluation.eval_loss(net, criterion, dataloader, args.cuda)
+        loss, acc = evaluation.eval_loss(net, criterion, dataloader, args.device)
         loss_compute_time = time.time() - loss_start
 
         # Record the result in the local array
@@ -159,10 +160,11 @@ def crunch(surf_file, net, w, s, d, dataloader, loss_key, acc_key, comm, rank, a
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='plotting loss surface')
     parser.add_argument('--mpi', '-m', action='store_true', help='use mpi')
-    parser.add_argument('--cuda', '-c', action='store_true', help='use cuda')
+    parser.add_argument('--device', '-c', default='mps', help='infer device')
     parser.add_argument('--threads', default=2, type=int, help='number of threads')
     parser.add_argument('--ngpu', type=int, default=1, help='number of GPUs to use for each rank, useful for data parallel evaluation')
     parser.add_argument('--batch_size', default=128, type=int, help='minibatch size')
+    parser.add_argument('--resume', default=False, type=bool, help='whether to resume the computation')
 
     # data parameters
     parser.add_argument('--dataset', default='cifar10', help='cifar10 | imagenet')
@@ -174,15 +176,15 @@ if __name__ == '__main__':
     parser.add_argument('--testloader', default='', help='path to the testloader with random labels')
 
     # model parameters
-    parser.add_argument('--model', default='resnet56', help='model name')
+    parser.add_argument('--model', default='resnet18', help='model name')
     parser.add_argument('--model_folder', default='', help='the common folder that contains model_file and model_file2')
-    parser.add_argument('--model_file', default='', help='path to the trained model file')
+    parser.add_argument('--model_file', default='cifar10/trained_nets/resnet18_sgd_lr=0.1_bs=32_wd=0.0005_mom=0.9_save_epoch=10/model_1.t7', help='path to the trained model file')
     parser.add_argument('--model_file2', default='', help='use (model_file2 - model_file) as the xdirection')
     parser.add_argument('--model_file3', default='', help='use (model_file3 - model_file) as the ydirection')
     parser.add_argument('--loss_name', '-l', default='crossentropy', help='loss functions: crossentropy | mse')
 
     # direction parameters
-    parser.add_argument('--dir_file', default='', help='specify the name of direction file, or the path to an eisting direction file')
+    parser.add_argument('--dir_file', default='cifar10/trained_nets/resnet18_sgd_lr=0.1_bs=32_wd=0.0005_mom=0.9_save_epoch=10/model_1.t7_weights.h5_[-1.0,1.0,51].h5', help='specify the name of direction file, or the path to an eisting direction file')
     parser.add_argument('--dir_type', default='weights', help='direction type: weights | states (including BN\'s running_mean/var)')
     parser.add_argument('--x', default='-1:1:51', help='A string with format xmin:x_max:xnum')
     parser.add_argument('--y', default=None, help='A string with format ymin:ymax:ynum')
@@ -192,7 +194,7 @@ if __name__ == '__main__':
     parser.add_argument('--yignore', default='', help='ignore bias and BN parameters: biasbn')
     parser.add_argument('--same_dir', action='store_true', default=False, help='use the same random direction for both x-axis and y-axis')
     parser.add_argument('--idx', default=0, type=int, help='the index for the repeatness experiment')
-    parser.add_argument('--surf_file', default='', help='customize the name of surface file, could be an existing file.')
+    parser.add_argument('--surf_file', default='cifar10/trained_nets/resnet18_sgd_lr=0.1_bs=32_wd=0.0005_mom=0.9_save_epoch=10/model_1.t7_weights.h5', help='customize the name of surface file, could be an existing file.')
 
     # plot parameters
     parser.add_argument('--proj_file', default='', help='the .h5 file contains projected optimization trajectory.')
@@ -202,7 +204,7 @@ if __name__ == '__main__':
     parser.add_argument('--vlevel', default=0.5, type=float, help='plot contours every vlevel')
     parser.add_argument('--show', action='store_true', default=False, help='show plotted figures')
     parser.add_argument('--log', action='store_true', default=False, help='use log scale for loss values')
-    parser.add_argument('--plot', action='store_true', default=False, help='plot figures after computation')
+    parser.add_argument('--plot', action='store_true', default=True, help='plot figures after computation')
 
     args = parser.parse_args()
 
@@ -217,13 +219,6 @@ if __name__ == '__main__':
         comm, rank, nproc = None, 0, 1
 
     # in case of multiple GPUs per node, set the GPU to use for each rank
-    if args.cuda:
-        if not torch.cuda.is_available():
-            raise Exception('User selected cuda option, but cuda is not available on this machine')
-        gpu_count = torch.cuda.device_count()
-        torch.cuda.set_device(rank % gpu_count)
-        print('Rank %d use GPU %d of %d GPUs on %s' %
-              (rank, torch.cuda.current_device(), gpu_count, socket.gethostname()))
 
     #--------------------------------------------------------------------------
     # Check plotting resolution
@@ -238,56 +233,56 @@ if __name__ == '__main__':
     except:
         raise Exception('Improper format for x- or y-coordinates. Try something like -1:1:51')
 
-    #--------------------------------------------------------------------------
-    # Load models and extract parameters
-    #--------------------------------------------------------------------------
-    net = model_loader.load(args.dataset, args.model, args.model_file)
-    w = net_plotter.get_weights(net) # initial parameters
-    s = copy.deepcopy(net.state_dict()) # deepcopy since state_dict are references
-    if args.ngpu > 1:
-        # data parallel with multiple GPUs on a single node
-        net = nn.DataParallel(net, device_ids=range(torch.cuda.device_count()))
-
-    #--------------------------------------------------------------------------
-    # Setup the direction file and the surface file
-    #--------------------------------------------------------------------------
     dir_file = net_plotter.name_direction_file(args) # name the direction file
-    if rank == 0:
-        net_plotter.setup_direction(args, dir_file, net)
-
     surf_file = name_surface_file(args, dir_file)
-    if rank == 0:
-        setup_surface_file(args, surf_file, dir_file)
+    if args.resume:
+        #--------------------------------------------------------------------------
+        # Load models and extract parameters
+        #--------------------------------------------------------------------------
+        net = model_loader.load(args.dataset, args.model, args.model_file)
+        w = net_plotter.get_weights(net) # initial parameters
+        s = copy.deepcopy(net.state_dict()) # deepcopy since state_dict are references
+        if args.ngpu > 1:
+            # data parallel with multiple GPUs on a single node
+            net = nn.DataParallel(net, device_ids=range(torch.cuda.device_count()))
 
-    # wait until master has setup the direction file and surface file
-    mpi.barrier(comm)
+        #--------------------------------------------------------------------------
+        # Setup the direction file and the surface file
+        #--------------------------------------------------------------------------
+        if rank == 0:
+            net_plotter.setup_direction(args, dir_file, net)
+        if rank == 0:
+            setup_surface_file(args, surf_file, dir_file)
 
-    # load directions
-    d = net_plotter.load_directions(dir_file)
-    # calculate the consine similarity of the two directions
-    if len(d) == 2 and rank == 0:
-        similarity = proj.cal_angle(proj.nplist_to_tensor(d[0]), proj.nplist_to_tensor(d[1]))
-        print('cosine similarity between x-axis and y-axis: %f' % similarity)
+        # wait until master has setup the direction file and surface file
+        mpi.barrier(comm)
 
-    #--------------------------------------------------------------------------
-    # Setup dataloader
-    #--------------------------------------------------------------------------
-    # download CIFAR10 if it does not exit
-    if rank == 0 and args.dataset == 'cifar10':
-        torchvision.datasets.CIFAR10(root=args.dataset + '/data', train=True, download=True)
+        # load directions
+        d = net_plotter.load_directions(dir_file)
+        # calculate the consine similarity of the two directions
+        if len(d) == 2 and rank == 0:
+            similarity = proj.cal_angle(proj.nplist_to_tensor(d[0]), proj.nplist_to_tensor(d[1]))
+            print('cosine similarity between x-axis and y-axis: %f' % similarity)
 
-    mpi.barrier(comm)
+        #--------------------------------------------------------------------------
+        # Setup dataloader
+        #--------------------------------------------------------------------------
+        # download CIFAR10 if it does not exit
+        if rank == 0 and args.dataset == 'cifar10':
+            torchvision.datasets.CIFAR10(root='/Users/xyz/Documents/Datasets/RAW_DATA/CIFAR10', train=True, download=True)
 
-    trainloader, testloader = dataloader.load_dataset(args.dataset, args.datapath,
-                                args.batch_size, args.threads, args.raw_data,
-                                args.data_split, args.split_idx,
-                                args.trainloader, args.testloader)
+        mpi.barrier(comm)
 
-    #--------------------------------------------------------------------------
-    # Start the computation
-    #--------------------------------------------------------------------------
-    crunch(surf_file, net, w, s, d, trainloader, 'train_loss', 'train_acc', comm, rank, args)
-    # crunch(surf_file, net, w, s, d, testloader, 'test_loss', 'test_acc', comm, rank, args)
+        trainloader, testloader = dataloader.load_dataset(args.dataset, args.datapath,
+                                    args.batch_size, args.threads, args.raw_data,
+                                    args.data_split, args.split_idx,
+                                    args.trainloader, args.testloader)
+
+        #--------------------------------------------------------------------------
+        # Start the computation
+        #--------------------------------------------------------------------------
+        crunch(surf_file, net, w, s, d, trainloader, 'train_loss', 'train_acc', comm, rank, args)
+        # crunch(surf_file, net, w, s, d, testloader, 'test_loss', 'test_acc', comm, rank, args)
 
     #--------------------------------------------------------------------------
     # Plot figures

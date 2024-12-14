@@ -42,9 +42,9 @@ def get_data_loaders(args):
 
 
     kwargs = {'num_workers': 2, 'pin_memory': True} if args.ngpu else {}
-    trainset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True,
+    trainset = torchvision.datasets.CIFAR10(root='/Users/xyz/Documents/Datasets/RAW_DATA/CIFAR10', train=True, download=True,
                                             transform=transform_train)
-    testset = torchvision.datasets.CIFAR10(root='./data', train=False, download=True,
+    testset = torchvision.datasets.CIFAR10(root='/Users/xyz/Documents/Datasets/RAW_DATA/CIFAR10', train=False, download=True,
                                            transform=transform_test)
 
     trainloader = torch.utils.data.DataLoader(trainset, batch_size=args.batch_size,

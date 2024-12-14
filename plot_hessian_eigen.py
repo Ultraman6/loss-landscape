@@ -116,7 +116,7 @@ if __name__ == '__main__':
     parser.add_argument('--threads', default=2, type=int, help='number of threads')
     parser.add_argument('--ngpu', type=int, default=1, help='number of GPUs to use for each rank, useful for data parallel evaluation')
     parser.add_argument('--batch_size', default=128, type=int, help='minibatch size')
-
+    parser.add_argument('--resume', default=False, type=bool, help='whether to resume the computation')
     # data parameters
     parser.add_argument('--dataset', default='cifar10', help='cifar10 | imagenet')
     parser.add_argument('--datapath', default='cifar10/data', metavar='DIR', help='path to the dataset')
@@ -127,7 +127,7 @@ if __name__ == '__main__':
     parser.add_argument('--testloader', default='', help='path to the testloader with random labels')
 
     # model parameters
-    parser.add_argument('--model', default='resnet56', help='model name')
+    parser.add_argument('--model', default='resnet18', help='model name')
     parser.add_argument('--model_folder', default='', help='the common folder that contains model_file and model_file2')
     parser.add_argument('--model_file', default='', help='path to the trained model file')
     parser.add_argument('--model_file2', default='', help='use (model_file2 - model_file) as the xdirection')
@@ -184,62 +184,63 @@ if __name__ == '__main__':
     except:
         raise Exception('Improper format for x- or y-coordinates. Try something like -1:1:51')
 
-    #--------------------------------------------------------------------------
-    # Load models and extract parameters
-    #--------------------------------------------------------------------------
-    net = model_loader.load(args.dataset, args.model, args.model_file)
-    w = net_plotter.get_weights(net) # initial parameters
-    s = copy.deepcopy(net.state_dict()) # deepcopy since state_dict are references
-    if args.ngpu > 1:
-        # data parallel with multiple GPUs on a single node
-        net = nn.DataParallel(net, device_ids=range(torch.cuda.device_count()))
-
-    #--------------------------------------------------------------------------
-    # Setup the direction file and the surface file
-    #--------------------------------------------------------------------------
     dir_file = net_plotter.name_direction_file(args) # name the direction file
-    if rank == 0:
-        net_plotter.setup_direction(args, dir_file, net)
-
     surf_file = name_surface_file(args, dir_file)
-    if rank == 0:
-        setup_surface_file(args, surf_file, dir_file)
+    if args.resume:
+        #--------------------------------------------------------------------------
+        # Load models and extract parameters
+        #--------------------------------------------------------------------------
+        net = model_loader.load(args.dataset, args.model, args.model_file)
+        w = net_plotter.get_weights(net) # initial parameters
+        s = copy.deepcopy(net.state_dict()) # deepcopy since state_dict are references
+        if args.ngpu > 1:
+            # data parallel with multiple GPUs on a single node
+            net = nn.DataParallel(net, device_ids=range(torch.cuda.device_count()))
 
-    # wait until master has setup the direction file and surface file
-    mpi4pytorch.barrier(comm)
+        #--------------------------------------------------------------------------
+        # Setup the direction file and the surface file
+        #--------------------------------------------------------------------------
+        if rank == 0:
+            net_plotter.setup_direction(args, dir_file, net)
 
-    # load directions
-    d = net_plotter.load_directions(dir_file)
-    # calculate the consine similarity of the two directions
-    if len(d) == 2 and rank == 0:
-        similarity = proj.cal_angle(proj.nplist_to_tensor(d[0]), proj.nplist_to_tensor(d[1]))
-        print('cosine similarity between x-axis and y-axis: %f' % similarity)
+        if rank == 0:
+            setup_surface_file(args, surf_file, dir_file)
 
-    #--------------------------------------------------------------------------
-    # Setup dataloader
-    #--------------------------------------------------------------------------
-    # download CIFAR10 if it does not exit
-    if rank == 0 and args.dataset == 'cifar10':
-        torchvision.datasets.CIFAR10(root=args.dataset + '/data', train=True, download=True)
+        # wait until master has setup the direction file and surface file
+        mpi4pytorch.barrier(comm)
 
-    mpi4pytorch.barrier(comm)
+        # load directions
+        d = net_plotter.load_directions(dir_file)
+        # calculate the consine similarity of the two directions
+        if len(d) == 2 and rank == 0:
+            similarity = proj.cal_angle(proj.nplist_to_tensor(d[0]), proj.nplist_to_tensor(d[1]))
+            print('cosine similarity between x-axis and y-axis: %f' % similarity)
 
-    trainloader, testloader = dataloader.load_dataset(args.dataset, args.datapath,
-                                args.batch_size, args.threads, args.raw_data,
-                                args.data_split, args.split_idx,
-                                args.trainloader, args.testloader)
+        #--------------------------------------------------------------------------
+        # Setup dataloader
+        #--------------------------------------------------------------------------
+        # download CIFAR10 if it does not exit
+        if rank == 0 and args.dataset == 'cifar10':
+            torchvision.datasets.CIFAR10(root=args.dataset + '/data', train=True, download=True)
 
-    #--------------------------------------------------------------------------
-    # Start the computation
-    #--------------------------------------------------------------------------
-    crunch_hessian_eigs(surf_file, net, w, s, d, trainloader, comm, rank, args)
-    print ("Rank " + str(rank) + ' is done!')
+        mpi4pytorch.barrier(comm)
 
-    #--------------------------------------------------------------------------
-    # Plot figures
-    #--------------------------------------------------------------------------
-    if args.plot and rank == 0:
-        if args.y:
-            plot_2D.plot_2d_eig_ratio(surf_file, 'min_eig', 'max_eig', args.show)
-        else:
-            plot_1D.plot_1d_eig_ratio(surf_file, args.xmin, args.xmax, 'min_eig', 'max_eig')
+        trainloader, testloader = dataloader.load_dataset(args.dataset, args.datapath,
+                                    args.batch_size, args.threads, args.raw_data,
+                                    args.data_split, args.split_idx,
+                                    args.trainloader, args.testloader)
+
+        #--------------------------------------------------------------------------
+        # Start the computation
+        #--------------------------------------------------------------------------
+        crunch_hessian_eigs(surf_file, net, w, s, d, trainloader, comm, rank, args)
+        print ("Rank " + str(rank) + ' is done!')
+
+        #--------------------------------------------------------------------------
+        # Plot figures
+        #--------------------------------------------------------------------------
+        if args.plot and rank == 0:
+            if args.y:
+                plot_2D.plot_2d_eig_ratio(surf_file, 'min_eig', 'max_eig', args.show)
+            else:
+                plot_1D.plot_1d_eig_ratio(surf_file, args.xmin, args.xmax, 'min_eig', 'max_eig')

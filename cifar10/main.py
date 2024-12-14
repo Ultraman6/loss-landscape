@@ -12,6 +12,7 @@ import torch.nn.functional as F
 import torch.backends.cudnn as cudnn
 from torch.autograd import Variable
 import torch.nn.parallel
+from tqdm import tqdm
 
 import model_loader
 import dataloader
@@ -31,88 +32,123 @@ def init_params(net):
                 init.constant_(m.bias, 0)
 
 # Training
-def train(trainloader, net, criterion, optimizer, use_cuda=True):
+
+def train(trainloader, net, criterion, optimizer, device):
     net.train()
     train_loss = 0
     correct = 0
     total = 0
 
+    # 使用 tqdm 包裹 trainloader
+    progress_bar = tqdm(enumerate(trainloader), total=len(trainloader), desc="Training")
+
     if isinstance(criterion, nn.CrossEntropyLoss):
-        for batch_idx, (inputs, targets) in enumerate(trainloader):
+        for batch_idx, (inputs, targets) in progress_bar:
             batch_size = inputs.size(0)
             total += batch_size
-            if use_cuda:
-                inputs, targets = inputs.cuda(), targets.cuda()
+            inputs, targets = inputs.to(device), targets.to(device)
             optimizer.zero_grad()
-            inputs, targets = Variable(inputs), Variable(targets)
+
             outputs = net(inputs)
             loss = criterion(outputs, targets)
             loss.backward()
             optimizer.step()
-            train_loss += loss.item()*batch_size
+            train_loss += loss.item() * batch_size
             _, predicted = torch.max(outputs.data, 1)
             correct += predicted.eq(targets.data).cpu().sum().item()
 
+            # 更新进度条信息
+            progress_bar.set_postfix({
+                "Loss": f"{train_loss / total:.4f}",
+                "Error (%)": f"{100 - 100. * correct / total:.2f}"
+            })
+
     elif isinstance(criterion, nn.MSELoss):
-        for batch_idx, (inputs, targets) in enumerate(trainloader):
+        for batch_idx, (inputs, targets) in progress_bar:
             batch_size = inputs.size(0)
             total += batch_size
 
             one_hot_targets = torch.FloatTensor(batch_size, 10).zero_()
             one_hot_targets = one_hot_targets.scatter_(1, targets.view(batch_size, 1), 1.0)
             one_hot_targets = one_hot_targets.float()
-            if use_cuda:
-                inputs, one_hot_targets = inputs.cuda(), one_hot_targets.cuda()
-            inputs, one_hot_targets = Variable(inputs), Variable(one_hot_targets)
-            outputs = F.softmax(net(inputs))
+            inputs, one_hot_targets = inputs.to(device), one_hot_targets.to(device)
+
+            outputs = F.softmax(net(inputs), dim=1)  # 添加 dim 参数
             loss = criterion(outputs, one_hot_targets)
             loss.backward()
             optimizer.step()
-            train_loss += loss.item()*batch_size
+            train_loss += loss.item() * batch_size
             _, predicted = torch.max(outputs.data, 1)
             correct += predicted.cpu().eq(targets).cpu().sum().item()
 
-    return train_loss/total, 100 - 100.*correct/total
+            # 更新进度条信息
+            progress_bar.set_postfix({
+                "Loss": f"{train_loss / total:.4f}",
+                "Error (%)": f"{100 - 100. * correct / total:.2f}"
+            })
+
+    return train_loss / total, 100 - 100. * correct / total
 
 
-def test(testloader, net, criterion, use_cuda=True):
+def test(testloader, net, criterion, device):
     net.eval()
     test_loss = 0
     correct = 0
     total = 0
+    # 使用 tqdm 包裹 testloader
+    progress_bar = tqdm(enumerate(testloader), total=len(testloader), desc="Testing")
 
     if isinstance(criterion, nn.CrossEntropyLoss):
-        for batch_idx, (inputs, targets) in enumerate(testloader):
+        for batch_idx, (inputs, targets) in progress_bar:
             batch_size = inputs.size(0)
             total += batch_size
 
-            if use_cuda:
-                inputs, targets = inputs.cuda(), targets.cuda()
-            inputs, targets = Variable(inputs), Variable(targets)
+            # 将数据移动到设备
+            inputs, targets = inputs.to(device), targets.to(device)
+
+            # 前向传播
             outputs = net(inputs)
             loss = criterion(outputs, targets)
-            test_loss += loss.item()*batch_size
+            test_loss += loss.item() * batch_size
+
+            # 计算预测结果
             _, predicted = torch.max(outputs.data, 1)
             correct += predicted.eq(targets.data).cpu().sum().item()
 
+            # 更新进度条信息
+            progress_bar.set_postfix({
+                "Loss": f"{test_loss / total:.4f}",
+                "Error (%)": f"{100 - 100. * correct / total:.2f}"
+            })
+
     elif isinstance(criterion, nn.MSELoss):
-        for batch_idx, (inputs, targets) in enumerate(testloader):
+        for batch_idx, (inputs, targets) in progress_bar:
             batch_size = inputs.size(0)
             total += batch_size
 
-            one_hot_targets = torch.FloatTensor(batch_size, 10).zero_()
-            one_hot_targets = one_hot_targets.scatter_(1, targets.view(batch_size, 1), 1.0)
+            # 创建 one-hot 的 targets
+            one_hot_targets = torch.zeros(batch_size, 10).scatter_(1, targets.view(batch_size, 1), 1.0)
             one_hot_targets = one_hot_targets.float()
-            if use_cuda:
-                inputs, one_hot_targets = inputs.cuda(), one_hot_targets.cuda()
-            inputs, one_hot_targets = Variable(inputs), Variable(one_hot_targets)
-            outputs = F.softmax(net(inputs))
-            loss = criterion(outputs, one_hot_targets)
-            test_loss += loss.item()*batch_size
-            _, predicted = torch.max(outputs.data, 1)
-            correct += predicted.cpu().eq(targets).cpu().sum().item()
 
-    return test_loss/total, 100 - 100.*correct/total
+            # 将数据移动到设备
+            inputs, one_hot_targets = inputs.to(device), one_hot_targets.to(device)
+
+            # 前向传播
+            outputs = F.softmax(net(inputs), dim=1)
+            loss = criterion(outputs, one_hot_targets)
+            test_loss += loss.item() * batch_size
+
+            # 计算预测结果
+            _, predicted = torch.max(outputs.data, 1)
+            correct += predicted.eq(targets).cpu().sum().item()
+
+            # 更新进度条信息
+            progress_bar.set_postfix({
+                "Loss": f"{test_loss / total:.4f}",
+                "Error (%)": f"{100 - 100. * correct / total:.2f}"
+            })
+
+    return test_loss / total, 100 - 100. * correct / total
 
 def name_save_folder(args):
     save_folder = args.model + '_' + str(args.optimizer) + '_lr=' + str(args.lr)
@@ -140,13 +176,13 @@ def name_save_folder(args):
 if __name__ == '__main__':
     # Training options
     parser = argparse.ArgumentParser(description='PyTorch CIFAR10 Training')
-    parser.add_argument('--batch_size', default=128, type=int)
+    parser.add_argument('--batch_size', default=32, type=int)
     parser.add_argument('--lr', default=0.1, type=float, help='learning rate')
     parser.add_argument('--lr_decay', default=0.1, type=float, help='learning rate decay rate')
     parser.add_argument('--optimizer', default='sgd', help='optimizer: sgd | adam')
     parser.add_argument('--weight_decay', default=0.0005, type=float)
     parser.add_argument('--momentum', default=0.9, type=float)
-    parser.add_argument('--epochs', default=300, type=int, metavar='N', help='number of total epochs to run')
+    parser.add_argument('--epochs', default=1, type=int, metavar='N', help='number of total epochs to run')
     parser.add_argument('--save', default='trained_nets',help='path to save trained nets')
     parser.add_argument('--save_epoch', default=10, type=int, help='save every save_epochs')
     parser.add_argument('--ngpu', type=int, default=1, help='number of GPUs to use')
@@ -155,7 +191,7 @@ if __name__ == '__main__':
     parser.add_argument('--resume_opt', default='', help='resume optimizer from checkpoint')
 
     # model parameters
-    parser.add_argument('--model', '-m', default='vgg9')
+    parser.add_argument('--model', '-m', default='resnet18')
     parser.add_argument('--loss_name', '-l', default='crossentropy', help='loss functions: crossentropy | mse')
 
     # data parameters
@@ -172,17 +208,17 @@ if __name__ == '__main__':
     print('\nLearning Rate: %f' % args.lr)
     print('\nDecay Rate: %f' % args.lr_decay)
 
-    use_cuda = torch.cuda.is_available()
-    print('Current devices: ' + str(torch.cuda.current_device()))
-    print('Device count: ' + str(torch.cuda.device_count()))
-
     # Set the seed for reproducing the results
     random.seed(args.rand_seed)
     np.random.seed(args.rand_seed)
     torch.manual_seed(args.rand_seed)
-    if use_cuda:
-        torch.cuda.manual_seed_all(args.rand_seed)
-        cudnn.benchmark = True
+    if torch.backends.mps.is_available():
+        device = torch.device("mps")
+    elif torch.cuda.is_available():
+        device = torch.device("cuda")
+    else:
+        device = torch.device("cpu")
+    print('device:', device)
 
     lr = args.lr  # current learning rate
     start_epoch = 1  # start from epoch 1 or last checkpoint epoch
@@ -194,7 +230,7 @@ if __name__ == '__main__':
     if not os.path.exists('trained_nets/' + save_folder):
         os.makedirs('trained_nets/' + save_folder)
 
-    f = open('trained_nets/' + save_folder + '/log.out', 'a', 0)
+    f = open('trained_nets/' + save_folder + '/log.out', 'a', 1)
 
     trainloader, testloader = dataloader.get_data_loaders(args)
 
@@ -214,32 +250,25 @@ if __name__ == '__main__':
         net = model_loader.load(args.model)
         print(net)
         init_params(net)
-
     if args.ngpu > 1:
         net = torch.nn.DataParallel(net)
-
     criterion = nn.CrossEntropyLoss()
     if args.loss_name == 'mse':
         criterion = nn.MSELoss()
-
-    if use_cuda:
-        net.cuda()
-        criterion = criterion.cuda()
-
+    net.to(device)
+    criterion.to(device)
     # Optimizer
     if args.optimizer == 'sgd':
         optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay, nesterov=True)
     else:
         optimizer = optim.Adam(net.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-
     if args.resume_opt:
         checkpoint_opt = torch.load(args.resume_opt)
         optimizer.load_state_dict(checkpoint_opt['optimizer'])
-
     # record the performance of initial model
     if not args.resume_model:
-        train_loss, train_err = test(trainloader, net, criterion, use_cuda)
-        test_loss, test_err = test(testloader, net, criterion, use_cuda)
+        train_loss, train_err = test(trainloader, net, criterion, device)
+        test_loss, test_err = test(testloader, net, criterion, device)
         status = 'e: %d loss: %.5f train_err: %.3f test_top1: %.3f test_loss %.5f \n' % (0, train_loss, train_err, test_err, test_loss)
         print(status)
         f.write(status)
@@ -254,10 +283,11 @@ if __name__ == '__main__':
         }
         torch.save(state, 'trained_nets/' + save_folder + '/model_0.t7')
         torch.save(opt_state, 'trained_nets/' + save_folder + '/opt_state_0.t7')
+        net.load_state_dict(state['state_dict'])
 
     for epoch in range(start_epoch, args.epochs + 1):
-        loss, train_err = train(trainloader, net, criterion, optimizer, use_cuda)
-        test_loss, test_err = test(testloader, net, criterion, use_cuda)
+        loss, train_err = train(trainloader, net, criterion, optimizer, device)
+        test_loss, test_err = test(testloader, net, criterion, device)
 
         status = 'e: %d loss: %.5f train_err: %.3f test_top1: %.3f test_loss %.5f \n' % (epoch, loss, train_err, test_err, test_loss)
         print(status)
@@ -274,6 +304,11 @@ if __name__ == '__main__':
             opt_state = {
                 'optimizer': optimizer.state_dict()
             }
+
+            print(f"Epoch {epoch}: Saving model with state_dict:")
+            for key, value in state['state_dict'].items():
+                print(f"{key}: {value.shape}")
+
             torch.save(state, 'trained_nets/' + save_folder + '/model_' + str(epoch) + '.t7')
             torch.save(opt_state, 'trained_nets/' + save_folder + '/opt_state_' + str(epoch) + '.t7')
 

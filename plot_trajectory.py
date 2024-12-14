@@ -18,8 +18,8 @@ import plot_2D
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Plot optimization trajectory')
     parser.add_argument('--dataset', default='cifar10', help='dataset')
-    parser.add_argument('--model', default='resnet56', help='trained models')
-    parser.add_argument('--model_folder', default='', help='folders for models to be projected')
+    parser.add_argument('--model', default='resnet18', help='trained models')
+    parser.add_argument('--model_folder', default='cifar10/trained_nets/resnet18_sgd_lr=0.1_bs=32_wd=0.0005_mom=0.9_save_epoch=10', help='folders for models to be projected')
     parser.add_argument('--dir_type', default='weights',
         help="""direction type: weights (all weights except bias and BN paras) |
                                 states (include BN.running_mean/var)""")
@@ -30,37 +30,43 @@ if __name__ == '__main__':
     parser.add_argument('--max_epoch', default=300, type=int, help='max number of epochs')
     parser.add_argument('--save_epoch', default=1, type=int, help='save models every few epochs')
     parser.add_argument('--dir_file', default='', help='load the direction file for projection')
+    parser.add_argument('--proj_file', default='', help='the .h5 file contains projected optimization trajectory.')
+    parser.add_argument('--resume', default=False, type=bool, help='whether to resume the computation')
 
     args = parser.parse_args()
 
     #--------------------------------------------------------------------------
     # load the final model
     #--------------------------------------------------------------------------
-    last_model_file = args.model_folder + '/' + args.prefix + str(args.max_epoch) + args.suffix
-    net = model_loader.load(args.dataset, args.model, last_model_file)
-    w = net_plotter.get_weights(net)
-    s = net.state_dict()
+    if not args.resume:
+        last_model_file = args.model_folder + '/' + args.prefix + str(args.max_epoch) + args.suffix
+        net = model_loader.load(args.dataset, args.model, last_model_file)
+        w = net_plotter.get_weights(net)
+        s = net.state_dict()
 
-    #--------------------------------------------------------------------------
-    # collect models to be projected
-    #--------------------------------------------------------------------------
-    model_files = []
-    for epoch in range(args.start_epoch, args.max_epoch + args.save_epoch, args.save_epoch):
-        model_file = args.model_folder + '/' + args.prefix + str(epoch) + args.suffix
-        assert os.path.exists(model_file), 'model %s does not exist' % model_file
-        model_files.append(model_file)
+        #--------------------------------------------------------------------------
+        # collect models to be projected
+        #--------------------------------------------------------------------------
+        model_files = []
+        for epoch in range(args.start_epoch, args.max_epoch + args.save_epoch, args.save_epoch):
+            model_file = args.model_folder + '/' + args.prefix + str(epoch) + args.suffix
+            assert os.path.exists(model_file), 'model %s does not exist' % model_file
+            model_files.append(model_file)
 
-    #--------------------------------------------------------------------------
-    # load or create projection directions
-    #--------------------------------------------------------------------------
-    if args.dir_file:
-        dir_file = args.dir_file
+        #--------------------------------------------------------------------------
+        # load or create projection directions
+        #--------------------------------------------------------------------------
+        if args.dir_file:
+            dir_file = args.dir_file
+        else:
+            dir_file = setup_PCA_directions(args, model_files, w, s)
+
+        #--------------------------------------------------------------------------
+        # projection trajectory to given directions
+        #--------------------------------------------------------------------------
+        proj_file = project_trajectory(dir_file, w, s, args.dataset, args.model,
+                                    model_files, args.dir_type, 'cos')
     else:
-        dir_file = setup_PCA_directions(args, model_files, w, s)
-
-    #--------------------------------------------------------------------------
-    # projection trajectory to given directions
-    #--------------------------------------------------------------------------
-    proj_file = project_trajectory(dir_file, w, s, args.dataset, args.model,
-                                model_files, args.dir_type, 'cos')
+        proj_file = args.proj_file
+        dir_file = args.dir_file
     plot_2D.plot_trajectory(proj_file, dir_file)
