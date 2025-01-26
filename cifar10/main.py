@@ -176,7 +176,7 @@ def name_save_folder(args):
 if __name__ == '__main__':
     # Training options
     parser = argparse.ArgumentParser(description='PyTorch CIFAR10 Training')
-    parser.add_argument('--batch_size', default=32, type=int)
+    parser.add_argument('--batch_size', default=128, type=int)
     parser.add_argument('--lr', default=0.1, type=float, help='learning rate')
     parser.add_argument('--lr_decay', default=0.1, type=float, help='learning rate decay rate')
     parser.add_argument('--optimizer', default='sgd', help='optimizer: sgd | adam')

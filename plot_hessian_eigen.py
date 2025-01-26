@@ -221,7 +221,7 @@ if __name__ == '__main__':
         #--------------------------------------------------------------------------
         # download CIFAR10 if it does not exit
         if rank == 0 and args.dataset == 'cifar10':
-            torchvision.datasets.CIFAR10(root=args.dataset + '/data', train=True, download=True)
+            torchvision.datasets.CIFAR10(root='E:\data\cifar10', train=True, download=True)
 
         mpi4pytorch.barrier(comm)
 
