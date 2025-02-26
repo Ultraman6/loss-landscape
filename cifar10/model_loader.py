@@ -1,5 +1,7 @@
 import os
 import torch, torchvision
+from torch import nn
+import torch.nn.functional as F
 import cifar10.models.vgg as vgg
 import cifar10.models.resnet as resnet
 import cifar10.models.densenet as densenet
@@ -57,3 +59,5 @@ def load(model_name, model_file=None, data_parallel=False):
 
     net.eval()
     return net
+
+

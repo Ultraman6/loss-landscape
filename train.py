@@ -9,13 +9,11 @@ import torch.nn as nn
 import torch.nn.init as init
 import torch.optim as optim
 import torch.nn.functional as F
-import torch.backends.cudnn as cudnn
-from torch.autograd import Variable
 import torch.nn.parallel
 from tqdm import tqdm
-
 import model_loader
-import dataloader
+from cifar10 import dataloader
+
 
 def init_params(net):
     for m in net.modules():
@@ -32,7 +30,6 @@ def init_params(net):
                 init.constant_(m.bias, 0)
 
 # Training
-
 def train(trainloader, net, criterion, optimizer, device):
     net.train()
     train_loss = 0
@@ -60,7 +57,7 @@ def train(trainloader, net, criterion, optimizer, device):
             # 更新进度条信息
             progress_bar.set_postfix({
                 "Loss": f"{train_loss / total:.4f}",
-                "Error (%)": f"{100 - 100. * correct / total:.2f}"
+                "Accuracy (%)": f"{100. * correct / total:.2f}"
             })
 
     elif isinstance(criterion, nn.MSELoss):
@@ -84,10 +81,10 @@ def train(trainloader, net, criterion, optimizer, device):
             # 更新进度条信息
             progress_bar.set_postfix({
                 "Loss": f"{train_loss / total:.4f}",
-                "Error (%)": f"{100 - 100. * correct / total:.2f}"
+                "Accuracy (%)": f"{100. * correct / total:.2f}"
             })
 
-    return train_loss / total, 100 - 100. * correct / total
+    return train_loss / total, 100. * correct / total
 
 
 def test(testloader, net, criterion, device):
@@ -118,7 +115,7 @@ def test(testloader, net, criterion, device):
             # 更新进度条信息
             progress_bar.set_postfix({
                 "Loss": f"{test_loss / total:.4f}",
-                "Error (%)": f"{100 - 100. * correct / total:.2f}"
+                "Accuracy (%)": f"{100. * correct / total:.2f}"
             })
 
     elif isinstance(criterion, nn.MSELoss):
@@ -145,10 +142,10 @@ def test(testloader, net, criterion, device):
             # 更新进度条信息
             progress_bar.set_postfix({
                 "Loss": f"{test_loss / total:.4f}",
-                "Error (%)": f"{100 - 100. * correct / total:.2f}"
+                "Accuracy (%)": f"{100. * correct / total:.2f}"
             })
 
-    return test_loss / total, 100 - 100. * correct / total
+    return test_loss / total, 100. * correct / total
 
 def name_save_folder(args):
     save_folder = args.model + '_' + str(args.optimizer) + '_lr=' + str(args.lr)
@@ -176,32 +173,41 @@ def name_save_folder(args):
 if __name__ == '__main__':
     # Training options
     parser = argparse.ArgumentParser(description='PyTorch CIFAR10 Training')
+
     parser.add_argument('--batch_size', default=32, type=int)
     parser.add_argument('--lr', default=0.1, type=float, help='learning rate')
     parser.add_argument('--lr_decay', default=0.1, type=float, help='learning rate decay rate')
     parser.add_argument('--optimizer', default='sgd', help='optimizer: sgd | adam')
     parser.add_argument('--weight_decay', default=0.0005, type=float)
     parser.add_argument('--momentum', default=0.9, type=float)
-    parser.add_argument('--epochs', default=1, type=int, metavar='N', help='number of total epochs to run')
+    parser.add_argument('--epochs', default=100, type=int, metavar='N', help='number of total epochs to run')
     parser.add_argument('--save', default='trained_nets',help='path to save trained nets')
     parser.add_argument('--save_epoch', default=10, type=int, help='save every save_epochs')
     parser.add_argument('--ngpu', type=int, default=1, help='number of GPUs to use')
     parser.add_argument('--rand_seed', default=0, type=int, help='seed for random num generator')
     parser.add_argument('--resume_model', default='', help='resume model from checkpoint')
     parser.add_argument('--resume_opt', default='', help='resume optimizer from checkpoint')
-
+    parser.add_argument('--proto', type=bool, default=False, help='whether to use protonet')
     # model parameters
+    parser.add_argument('--dataset', default='cifar10', type=str)
     parser.add_argument('--model', '-m', default='resnet18')
     parser.add_argument('--loss_name', '-l', default='crossentropy', help='loss functions: crossentropy | mse')
-
     # data parameters
     parser.add_argument('--raw_data', action='store_true', default=False, help='do not normalize data')
     parser.add_argument('--noaug', default=False, action='store_true', help='no data augmentation')
     parser.add_argument('--label_corrupt_prob', type=float, default=0.0)
     parser.add_argument('--trainloader', default='', help='path to the dataloader with random labels')
     parser.add_argument('--testloader', default='', help='path to the testloader with random labels')
-
     parser.add_argument('--idx', default=0, type=int, help='the index for the repeated experiment')
+
+    # protonet parameters
+    parser.add_argument('--classes_per_it_tr', default=2, type=int, help='number of classes per iteration for training')
+    parser.add_argument('--num_support_tr', default=4, type=int, help='number of support samples per class for training')
+    parser.add_argument('--num_query_tr', default=12, type=int, help='number of support samples per class for training')
+
+    parser.add_argument('--classes_per_it_val', default=5, type=int, help='number of classes per iteration for testing')
+    parser.add_argument('--num_support_val', default=5, type=int, help='number of support samples per class for testing')
+    parser.add_argument('--num_query_val', default=5, type=int, help='number of support samples per class for testing')
 
     args = parser.parse_args()
 
@@ -232,7 +238,7 @@ if __name__ == '__main__':
 
     f = open('trained_nets/' + save_folder + '/log.out', 'a', 1)
 
-    trainloader, testloader = dataloader.get_data_loaders(args)
+    trainloader, testloader = dataloader.load_dataset(args)
 
     if args.label_corrupt_prob and not args.resume_model:
         torch.save(trainloader, 'trained_nets/' + save_folder + '/trainloader.dat')
@@ -243,11 +249,11 @@ if __name__ == '__main__':
         # Load checkpoint.
         print('==> Resuming from checkpoint..')
         checkpoint = torch.load(args.resume_model)
-        net = model_loader.load(args.model)
+        net = model_loader.load(args.dataset, args.model)
         net.load_state_dict(checkpoint['state_dict'])
         start_epoch = checkpoint['epoch'] + 1
     else:
-        net = model_loader.load(args.model)
+        net = model_loader.load(args.dataset, args.model)
         print(net)
         init_params(net)
     if args.ngpu > 1:
@@ -269,7 +275,7 @@ if __name__ == '__main__':
     if not args.resume_model:
         train_loss, train_err = test(trainloader, net, criterion, device)
         test_loss, test_err = test(testloader, net, criterion, device)
-        status = 'e: %d loss: %.5f train_err: %.3f test_top1: %.3f test_loss %.5f \n' % (0, train_loss, train_err, test_err, test_loss)
+        status = 'e: %d loss: %.5f train_acc: %.3f test_top1: %.3f test_loss %.5f \n' % (0, train_loss, train_err, test_err, test_loss)
         print(status)
         f.write(status)
 
@@ -280,24 +286,23 @@ if __name__ == '__main__':
         }
         opt_state = {
             'optimizer': optimizer.state_dict()
-        }
+        } # 初始模型
         torch.save(state, 'trained_nets/' + save_folder + '/model_0.t7')
         torch.save(opt_state, 'trained_nets/' + save_folder + '/opt_state_0.t7')
         net.load_state_dict(state['state_dict'])
 
     for epoch in range(start_epoch, args.epochs + 1):
-        loss, train_err = train(trainloader, net, criterion, optimizer, device)
-        test_loss, test_err = test(testloader, net, criterion, device)
+        loss, train_acc = train(trainloader, net, criterion, optimizer, device)
+        test_loss, test_acc = test(testloader, net, criterion, device)
 
-        status = 'e: %d loss: %.5f train_err: %.3f test_top1: %.3f test_loss %.5f \n' % (epoch, loss, train_err, test_err, test_loss)
+        status = 'e: %d loss: %.5f train_acc: %.3f test_top1: %.3f test_loss %.5f \n' % (epoch, loss, train_acc, test_acc, test_loss)
         print(status)
         f.write(status)
 
         # Save checkpoint.
-        acc = 100 - test_err
         if epoch == 1 or epoch % args.save_epoch == 0 or epoch == 150:
             state = {
-                'acc': acc,
+                'acc': test_acc,
                 'epoch': epoch,
                 'state_dict': net.module.state_dict() if args.ngpu > 1 else net.state_dict(),
             }
@@ -309,6 +314,7 @@ if __name__ == '__main__':
             for key, value in state['state_dict'].items():
                 print(f"{key}: {value.shape}")
 
+            # 训练后模型
             torch.save(state, 'trained_nets/' + save_folder + '/model_' + str(epoch) + '.t7')
             torch.save(opt_state, 'trained_nets/' + save_folder + '/opt_state_' + str(epoch) + '.t7')
 

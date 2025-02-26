@@ -8,13 +8,11 @@ import copy
 import h5py
 import torch
 import time
-import socket
 import os
-import sys
 import numpy as np
 import torchvision
 import torch.nn as nn
-import dataloader
+from cifar10 import dataloader
 import evaluation
 import projection as proj
 import net_plotter
@@ -274,9 +272,9 @@ if __name__ == '__main__':
         mpi.barrier(comm)
 
         trainloader, testloader = dataloader.load_dataset(args.dataset, args.datapath,
-                                    args.batch_size, args.threads, args.raw_data,
-                                    args.data_split, args.split_idx,
-                                    args.trainloader, args.testloader)
+                                                          args.batch_size, args.threads, args.raw_data,
+                                                          args.data_split, args.split_idx,
+                                                          args.trainloader, args.testloader)
 
         #--------------------------------------------------------------------------
         # Start the computation

@@ -72,7 +72,6 @@ def npvec_to_tensorlist(direction, params):
         return s2
 
 
-
 def cal_angle(vec1, vec2):
     """ Calculate cosine similarities between two torch tensors or two ndarraies
         Args:
@@ -98,7 +97,7 @@ def project_1D(w, d):
     scale = torch.dot(w, d)/d.norm()
     return scale.item()
 
-
+# 路径、x、y 轴方向均为高维向量
 def project_2D(d, dx, dy, proj_method):
     """ Project vector d to the plane spanned by dx and dy.
 
@@ -122,7 +121,8 @@ def project_2D(d, dx, dy, proj_method):
 
     return x, y
 
-
+# 需要先获取loss landscape PCA 投影的两个方向
+# 并需输入模型迭代每轮的模型权重
 def project_trajectory(dir_file, w, s, dataset, model_name, model_files,
                dir_type='weights', proj_method='cos'):
     """
@@ -152,7 +152,7 @@ def project_trajectory(dir_file, w, s, dataset, model_name, model_files,
     dy = nplist_to_tensor(directions[1])
 
     xcoord, ycoord = [], []
-    for model_file in model_files:
+    for model_file in model_files:  # 计算每轮与最后一轮的模型权重参数像向量距离
         net2 = model_loader.load(dataset, model_name, model_file)
         if dir_type == 'weights':
             w2 = net_plotter.get_weights(net2)
@@ -161,8 +161,8 @@ def project_trajectory(dir_file, w, s, dataset, model_name, model_files,
             s2 = net2.state_dict()
             d = net_plotter.get_diff_states(s, s2)
         d = tensorlist_to_tensor(d)
-
-        x, y = project_2D(d, dx, dy, proj_method)
+        # 传入路径
+        x, y = project_2D(d, dx, dy, proj_method)  # 中心点即为最终的模型权重参数，其余则根据距离投影到pca方向上
         print ("%s  (%.4f, %.4f)" % (model_file, x, y))
 
         xcoord.append(x)
@@ -175,7 +175,7 @@ def project_trajectory(dir_file, w, s, dataset, model_name, model_files,
 
     return proj_file
 
-
+# 方差最大的两个方向
 def setup_PCA_directions(args, model_files, w, s):
     """
         Find PCA directions for the optimization path from the initial model

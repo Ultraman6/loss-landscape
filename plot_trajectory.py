@@ -41,7 +41,7 @@ if __name__ == '__main__':
     if not args.resume:
         last_model_file = args.model_folder + '/' + args.prefix + str(args.max_epoch) + args.suffix
         net = model_loader.load(args.dataset, args.model, last_model_file)
-        w = net_plotter.get_weights(net)
+        w = net_plotter.get_weights(net)  # 装载最后轮的模型参数
         s = net.state_dict()
 
         #--------------------------------------------------------------------------

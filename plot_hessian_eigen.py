@@ -9,12 +9,10 @@ import h5py
 import torch
 import time
 import socket
-import os
-import sys
 import torchvision
 import torch.nn as nn
 import mpi4pytorch
-import dataloader
+from cifar10 import dataloader
 import net_plotter
 import plot_2D
 import plot_1D
@@ -226,9 +224,9 @@ if __name__ == '__main__':
         mpi4pytorch.barrier(comm)
 
         trainloader, testloader = dataloader.load_dataset(args.dataset, args.datapath,
-                                    args.batch_size, args.threads, args.raw_data,
-                                    args.data_split, args.split_idx,
-                                    args.trainloader, args.testloader)
+                                                          args.batch_size, args.threads, args.raw_data,
+                                                          args.data_split, args.split_idx,
+                                                          args.trainloader, args.testloader)
 
         #--------------------------------------------------------------------------
         # Start the computation
