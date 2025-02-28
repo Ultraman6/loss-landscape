@@ -19,11 +19,9 @@ class CNN(nn.Module):
         )
         self.head = nn.Linear(192, 10)
 
-    def forward(self, x):
+    def forward(self, x, feature=False):
         x = self.encoder(x)
-        torch.save(x.cpu(), 'test.pt')
-        return self.head(x)
-
-    def forward_proto(self, x):
-        x = self.encoder(x)
-        return self.head(x), x
+        if feature:
+            return self.head(x), x
+        else:
+            return self.head(x)

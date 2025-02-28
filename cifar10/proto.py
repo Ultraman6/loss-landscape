@@ -1,15 +1,13 @@
 import numpy as np
 import torch
-from collections import defaultdict
 from torch import nn
-from torch.utils.data import DataLoader
 
 
 def save_protos(model, dl, folder):
     """ Returns the test accuracy and loss.
     """
     loss, total, correct = 0.0, 0.0, 0.0
-    criterion = nn.NLLLoss().to('cuda')
+    criterion = nn.CrossEntropyLoss
 
     agg_protos_label = {}
     model.to('cuda')  # 个人认为这里的划分无任何意义（不同本地的模型在本地测试集上的原型，之间的平均只能说明经验问题，也就是否都学得好）
@@ -19,7 +17,7 @@ def save_protos(model, dl, folder):
         images, labels = images.to('cuda'), labels.to('cuda')
 
         model.zero_grad()
-        outputs, protos = model(images)
+        outputs, protos = model(images, True)
 
         batch_loss = criterion(outputs, labels)
         loss += batch_loss.item()
