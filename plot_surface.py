@@ -163,6 +163,7 @@ if __name__ == '__main__':
     parser.add_argument('--ngpu', type=int, default=1, help='number of GPUs to use for each rank, useful for data parallel evaluation')
     parser.add_argument('--batch_size', default=128, type=int, help='minibatch size')
     parser.add_argument('--resume', default=True, type=bool, help='whether to resume the computation')
+    parser.add_argument('--proto', type=bool, default=False, help='whether to use protonet')
 
     # data parameters
     parser.add_argument('--dataset', default='cifar10', help='cifar10 | imagenet')
@@ -176,7 +177,7 @@ if __name__ == '__main__':
     # model parameters
     parser.add_argument('--model', default='resnet18', help='model name')
     parser.add_argument('--model_folder', default='', help='the common folder that contains model_file and model_file2')
-    parser.add_argument('--model_file', default='E:\Github\loss-landscape\cifar10/trained_nets/resnet18_sgd_lr=0.1_bs=32_wd=0.0005_mom=0.9_save_epoch=10\model_1.t7', help='path to the trained model file')
+    parser.add_argument('--model_file', default='/Users/xyz/Documents/GitHub/loss-landscape/trained_nets/resnet18_sgd_lr=0.1_bs=32_wd=0.0005_mom=0.9_save_epoch=10/model_100.t7', help='path to the trained model file')
     parser.add_argument('--model_file2', default='', help='use (model_file2 - model_file) as the xdirection')
     parser.add_argument('--model_file3', default='', help='use (model_file3 - model_file) as the ydirection')
     parser.add_argument('--loss_name', '-l', default='crossentropy', help='loss functions: crossentropy | mse')
@@ -267,11 +268,11 @@ if __name__ == '__main__':
         #--------------------------------------------------------------------------
         # download CIFAR10 if it does not exit
         if rank == 0 and args.dataset == 'cifar10':
-            torchvision.datasets.CIFAR10(root='E:\data\cifar10', train=True, download=True)
+            torchvision.datasets.CIFAR10(root='../../cifar10', train=True, download=True)
 
         mpi.barrier(comm)
 
-        trainloader, testloader = dataloader.load_dataset(args.dataset, args.datapath,
+        trainloader, testloader = dataloader.load_dataset(args,
                                                           args.batch_size, args.threads, args.raw_data,
                                                           args.data_split, args.split_idx,
                                                           args.trainloader, args.testloader)

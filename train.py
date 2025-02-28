@@ -192,7 +192,7 @@ if __name__ == '__main__':
     parser.add_argument('--proto', type=bool, default=False, help='whether to use protonet')
     # model parameters
     parser.add_argument('--dataset', default='cifar10', type=str)
-    parser.add_argument('--model', '-m', default='resnet18')
+    parser.add_argument('--model', '-m', default='cnn')
     parser.add_argument('--loss_name', '-l', default='crossentropy', help='loss functions: crossentropy | mse')
     # data parameters
     parser.add_argument('--raw_data', action='store_true', default=False, help='do not normalize data')

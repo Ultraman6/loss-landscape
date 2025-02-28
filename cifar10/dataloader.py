@@ -52,7 +52,7 @@ def load_dataset(args, batch_size=128, \
             transforms.ToTensor(),
             normalize,
         ])
-    trainset = torchvision.datasets.CIFAR10(root='/Users/xyz/Documents/Datasets/RAW_DATA/CIFAR10', train=True,
+    trainset = torchvision.datasets.CIFAR10(root='./././CIFAR10', train=True,
                                             download=True, transform=transform)
     # If data_split>1, then randomly select a subset of the data. E.g., if datasplit=3, then
     # randomly choose 1/3 of the data.
@@ -81,7 +81,7 @@ def load_dataset(args, batch_size=128, \
         else:
             train_loader = torch.utils.data.DataLoader(trainset, batch_size=batch_size,
                                                       shuffle=False, **kwargs)
-    testset = torchvision.datasets.CIFAR10(root='/Users/xyz/Documents/Datasets/RAW_DATA/CIFAR10', train=False,
+    testset = torchvision.datasets.CIFAR10(root='../../CIFAR10', train=False,
                                            download=False, transform=transform)
     # if args.proto:
     #     test_sampler = init_sampler(args, trainset.targets, None, 'test')

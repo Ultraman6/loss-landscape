@@ -3,11 +3,13 @@ import torch, torchvision
 from torch import nn
 import torch.nn.functional as F
 import cifar10.models.vgg as vgg
+import cifar10.models.cnn as cnn
 import cifar10.models.resnet as resnet
 import cifar10.models.densenet as densenet
 
 # map between model name and function
 models = {
+    'cnn'                   : cnn.CNN,
     'vgg9'                  : vgg.VGG9,
     'densenet121'           : densenet.DenseNet121,
     'resnet18'              : resnet.ResNet18,
