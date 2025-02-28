@@ -1,3 +1,4 @@
+import torch
 from torch import nn
 
 class CNN(nn.Module):
@@ -20,4 +21,9 @@ class CNN(nn.Module):
 
     def forward(self, x):
         x = self.encoder(x)
+        torch.save(x.cpu(), 'test.pt')
         return self.head(x)
+
+    def forward_proto(self, x):
+        x = self.encoder(x)
+        return self.head(x), x

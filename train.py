@@ -13,6 +13,7 @@ import torch.nn.parallel
 from tqdm import tqdm
 import model_loader
 from cifar10 import dataloader
+from cifar10.proto import save_protos
 
 
 def init_params(net):
@@ -274,6 +275,7 @@ if __name__ == '__main__':
         checkpoint_opt = torch.load(args.resume_opt)
         optimizer.load_state_dict(checkpoint_opt['optimizer'])
     # record the performance of initial model
+    folder = 'trained_nets/' + save_folder
     if not args.resume_model:
         train_loss, train_err = test(trainloader, net, criterion, device)
         test_loss, test_err = test(testloader, net, criterion, device)
@@ -289,8 +291,8 @@ if __name__ == '__main__':
         opt_state = {
             'optimizer': optimizer.state_dict()
         } # 初始模型
-        torch.save(state, 'trained_nets/' + save_folder + '/model_0.t7')
-        torch.save(opt_state, 'trained_nets/' + save_folder + '/opt_state_0.t7')
+        torch.save(state, folder + '/model_0.t7')
+        torch.save(opt_state, folder + '/opt_state_0.t7')
         net.load_state_dict(state['state_dict'])
 
     for epoch in range(start_epoch, args.epochs + 1):
@@ -324,5 +326,9 @@ if __name__ == '__main__':
             lr *= args.lr_decay
             for param_group in optimizer.param_groups:
                 param_group['lr'] *= args.lr_decay
+
+    # 原型保存
+    save_protos(net, trainloader, folder+'train_protos')
+    save_protos(net, testloader, folder+'test_protos')
 
     f.close()
