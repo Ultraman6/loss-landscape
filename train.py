@@ -182,7 +182,7 @@ if __name__ == '__main__':
     parser.add_argument('--optimizer', default='sgd', help='optimizer: sgd | adam')
     parser.add_argument('--weight_decay', default=0.0005, type=float)
     parser.add_argument('--momentum', default=0.9, type=float)
-    parser.add_argument('--epochs', default=200, type=int, metavar='N', help='number of total epochs to run')
+    parser.add_argument('--epochs', default=100, type=int, metavar='N', help='number of total epochs to run')
     parser.add_argument('--save', default='trained_nets',help='path to save trained nets')
     parser.add_argument('--save_epoch', default=10, type=int, help='save every save_epochs')
     parser.add_argument('--ngpu', type=int, default=1, help='number of GPUs to use')
