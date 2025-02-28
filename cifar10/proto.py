@@ -3,11 +3,10 @@ import torch
 from torch import nn
 
 
-def save_protos(model, dl, folder):
+def save_protos(model, dl, criterion, folder):
     """ Returns the test accuracy and loss.
     """
     loss, total, correct = 0.0, 0.0, 0.0
-    criterion = nn.CrossEntropyLoss
 
     agg_protos_label = {}
     model.to('cuda')  # 个人认为这里的划分无任何意义（不同本地的模型在本地测试集上的原型，之间的平均只能说明经验问题，也就是否都学得好）

@@ -328,7 +328,7 @@ if __name__ == '__main__':
                 param_group['lr'] *= args.lr_decay
 
     # 原型保存
-    save_protos(net, trainloader, folder+'train_protos')
-    save_protos(net, testloader, folder+'test_protos')
+    save_protos(net, trainloader, criterion, folder+'train_protos')
+    save_protos(net, testloader, criterion, folder+'test_protos')
 
     f.close()
